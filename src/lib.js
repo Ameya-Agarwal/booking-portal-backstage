@@ -10,6 +10,7 @@ export const CONFIG = {
   practiceMaxHours: 2,     // longest single practice booking
   dayFromHour: 8,          // earliest event start
   dayToHour: 24,           // latest event end
+  maxSlotsPerRequest: 10,  // practice slots one request can hold
 };
 
 export const RESOURCES = [
@@ -182,6 +183,33 @@ export function validateBooking(input, ctx) {
     }
   }
   return { row: { type, club, title, date, startMin: s, endMin: e, items, festId } };
+}
+
+// Validates a request that is either one booking, or a practice request with several `slots`.
+// All slots must pass, otherwise nothing is accepted and the error names the slot.
+export function validateBatch(input, ctx) {
+  if (!input || typeof input !== "object") return { error: "Invalid request." };
+  if (!Array.isArray(input.slots)) {
+    const v = validateBooking(input, ctx);
+    return v.error ? v : { rows: [v.row] };
+  }
+  if (input.type !== "practice") return { error: "Several slots at once are only for practice." };
+  if (!input.slots.length) return { error: "Add at least one slot." };
+  if (input.slots.length > CONFIG.maxSlotsPerRequest) {
+    return { error: `You can request up to ${CONFIG.maxSlotsPerRequest} slots at once.` };
+  }
+  const rows = [], taken = [];
+  for (let i = 0; i < input.slots.length; i++) {
+    const sl = input.slots[i] || {};
+    const v = validateBooking(
+      { ...input, slots: undefined, date: sl.date, startMin: sl.startMin, endMin: sl.endMin },
+      { ...ctx, bookings: [...(ctx.bookings || []), ...taken] }
+    );
+    if (v.error) return { error: `Slot ${i + 1} (${sl.date}, ${fmtMin(Number(sl.startMin) || 0)}-${fmtMin(Number(sl.endMin) || 0)}): ${v.error}` };
+    rows.push(v.row);
+    taken.push({ status: "pending", date: v.row.date, startMin: v.row.startMin, endMin: v.row.endMin, items: v.row.items });
+  }
+  return { rows };
 }
 
 // Items on `booking` that are already held by an approved booking at the same time.
