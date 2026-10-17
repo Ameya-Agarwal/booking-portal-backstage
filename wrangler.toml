@@ -5,7 +5,7 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "main-audi-bookings"
-database_id = "REPLACE_WITH_DATABASE_ID"   # printed by `wrangler d1 create main-audi-bookings`
+database_id = "ef44ef46-356b-45aa-a97c-b24b93c0d46e"   # printed by `wrangler d1 create main-audi-bookings`
 
 [vars]
 GOOGLE_CLIENT_ID = "117475824733-a788gcqpkdq3tln0rk9srps9q9vk72g1.apps.googleusercontent.com"
