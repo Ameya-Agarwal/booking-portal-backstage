@@ -14,5 +14,5 @@ ALLOWED_EMAIL_DOMAIN = "bits-pilani.ac.in"   # matches @bits-pilani.ac.in and @p
 # Secrets are NOT stored here. Set them with:
 #   npx wrangler pages secret put SESSION_SECRET
 #   npx wrangler pages secret put STAFF_PASSWORD
-#   npx wrangler pages secret put RESEND_API_KEY   (optional: turns on decision emails)
-#   npx wrangler pages secret put EMAIL_FROM        (optional: e.g. "Main Audi <bookings@yourdomain.in>")
+#   npx wrangler pages secret put MAIL_WEBHOOK_URL      (optional: turns on decision emails)
+#   npx wrangler pages secret put MAIL_WEBHOOK_SECRET  (optional: same value as MAIL_SECRET in the Apps Script)

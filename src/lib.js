@@ -262,18 +262,21 @@ export function buildDecisionEmail(booking, status, previous) {
   return { subject: `Your booking "${booking.title}" is ${verdict}`, text, html };
 }
 
-// Sends one email through Resend. Does nothing when RESEND_API_KEY or EMAIL_FROM is not set,
-// and never throws, so a mail problem cannot break approving a booking.
+// Sends one email through the Google Apps Script web app in apps-script/Code.gs.
+// Does nothing when MAIL_WEBHOOK_URL or MAIL_WEBHOOK_SECRET is not set, and never throws,
+// so a mail problem cannot break approving a booking.
 export async function sendEmail(env, { to, subject, text, html }) {
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM || !to) return false;
+  if (!env.MAIL_WEBHOOK_URL || !env.MAIL_WEBHOOK_SECRET || !to) return false;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetch(env.MAIL_WEBHOOK_URL, {
       method: "POST",
-      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, text, html }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ secret: env.MAIL_WEBHOOK_SECRET, to, subject, text, html }),
     });
-    if (!res.ok) console.error("Email failed:", res.status, await res.text());
-    return res.ok;
+    const out = await res.json().catch(() => null);
+    const ok = res.ok && !!out && out.ok === true;
+    if (!ok) console.error("Email failed:", res.status, JSON.stringify(out));
+    return ok;
   } catch (e) {
     console.error("Email failed:", e);
     return false;
