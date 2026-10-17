@@ -1,0 +1,16 @@
+name = "main-audi-bookings"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "main-audi-bookings"
+database_id = "REPLACE_WITH_DATABASE_ID"   # printed by `wrangler d1 create main-audi-bookings`
+
+[vars]
+GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+ALLOWED_EMAIL_DOMAIN = "bits-pilani.ac.in"   # matches @bits-pilani.ac.in and @pilani.bits-pilani.ac.in
+
+# Secrets are NOT stored here. Set them with:
+#   npx wrangler pages secret put SESSION_SECRET
+#   npx wrangler pages secret put STAFF_PASSWORD
