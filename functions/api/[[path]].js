@@ -3,6 +3,7 @@ import {
   CONFIG, RESOURCES, json, fail, todayIST, addDays, isDate,
   signToken, verifyToken, safeEqual, verifyGoogle, validateBatch, approvedClashes,
 } from "../../src/lib.js";
+import { notifyBooking } from "../../src/email.js";
 
 const SESSION_SECONDS = 60 * 60 * 24 * 14; // sign-in lasts 14 days
 const STAFF_SECONDS = 60 * 60 * 12;        // staff access lasts 12 hours
@@ -102,7 +103,8 @@ export async function onRequest({ request, env, params }) {
         ).bind(id, r.type, r.club, r.title, r.date, r.startMin, r.endMin, JSON.stringify(r.items), r.festId, user.email, user.name, now);
       });
       await env.DB.batch(stmts);
-      return json({ id: ids[0], ids }, 201);
+      const warning = await notifyBooking(env, user.email, v.rows.map((r, i) => ({ ...r, id: ids[i], status: "pending" })), true);
+      return json({ id: ids[0], ids, ...(warning ? { warning } : {}) }, 201);
     }
 
     if (route === "bookings" && parts.length === 3 && method === "POST") {
@@ -133,9 +135,11 @@ export async function onRequest({ request, env, params }) {
         }
         let note = String((body && body.note) || "").trim().slice(0, 200);
         if (status === "rejected" && b.status === "approved" && !note) note = "Approval withdrawn by the desk.";
-        await env.DB.prepare("UPDATE bookings SET status=?, note=?, decided_by=?, decided_at=? WHERE id=?")
-          .bind(status, note, user.email, new Date().toISOString(), id).run();
-        return json({ ok: true });
+        const result = await env.DB.prepare("UPDATE bookings SET status=?, note=?, decided_by=?, decided_at=? WHERE id=? AND status=?")
+          .bind(status, note, user.email, new Date().toISOString(), id, b.status).run();
+        if (!result.meta.changes) return fail(409, "That booking's status has changed. Refresh the page to see where it stands.");
+        const warning = await notifyBooking(env, b.createdBy, [{ ...b, status, note }]);
+        return json({ ok: true, ...(warning ? { warning } : {}) });
       }
     }
 

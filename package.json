@@ -7,7 +7,7 @@
     "db:init:local": "wrangler d1 execute main-audi-bookings --local --file=schema.sql",
     "db:init": "wrangler d1 execute main-audi-bookings --remote --file=schema.sql",
     "deploy": "wrangler pages deploy public --project-name main-audi-bookings",
-    "test": "node test/rules.test.js"
+    "test": "node test/rules.test.js && node --test test/email.test.js"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
