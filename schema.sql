@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS fests (
   id    TEXT PRIMARY KEY,
   name  TEXT NOT NULL,
   start TEXT NOT NULL,  -- YYYY-MM-DD, first day of the fest
-  end   TEXT NOT NULL   -- YYYY-MM-DD, last day of the fest
+  end   TEXT NOT NULL,  -- YYYY-MM-DD, last day of the fest
+  practice_start TEXT,  -- optional: first day clubs can book practice
+  practice_end   TEXT   -- optional: last day clubs can book practice
 );
 
 CREATE TABLE IF NOT EXISTS bookings (

@@ -160,7 +160,7 @@ export function validateBooking(input, ctx) {
     const fest = (ctx.fests || []).find((f) => f.id === input.festId);
     if (!fest) return err("Choose a fest.");
     festId = fest.id;
-    const earliest = addDays(ctx.today, CONFIG.practiceLeadDays), hi = addDays(fest.start, -CONFIG.practiceCloseDays);
+    const { lo: earliest, hi } = practiceWindow(fest, ctx.today);
     if (date < earliest || date > hi) {
       return err(`Practice for ${fest.name} can be booked from ${earliest} to ${hi}.`);
     }
@@ -182,6 +182,15 @@ export function validateBooking(input, ctx) {
     }
   }
   return { row: { type, club, title, date, startMin: s, endMin: e, items, festId } };
+}
+
+// The days clubs can book practice for a fest. Staff can set their own first and last day;
+// without them it is tomorrow until `practiceCloseDays` before the fest starts.
+export function practiceWindow(fest, today) {
+  const tomorrow = addDays(today, CONFIG.practiceLeadDays);
+  const lo = fest.practiceStart && fest.practiceStart > tomorrow ? fest.practiceStart : tomorrow;
+  const hi = fest.practiceEnd || addDays(fest.start, -CONFIG.practiceCloseDays);
+  return { lo, hi, closed: hi < lo };
 }
 
 // Validates a request that is either one booking, or a practice request with several `slots`.

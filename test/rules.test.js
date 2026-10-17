@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
-import { validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
+import { practiceWindow, validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
 
 const today = "2026-10-17";
-const fests = [{ id: "f1", name: "Oasis", start: "2026-11-05", end: "2026-11-08" }];
+const fests = [
+  { id: "f1", name: "Oasis", start: "2026-11-05", end: "2026-11-08" },
+  { id: "f2", name: "Tech Fest", start: "2026-11-20", end: "2026-11-22", practiceStart: "2026-11-10", practiceEnd: "2026-11-18" },
+  { id: "f3", name: "Cultural", start: "2026-11-25", end: "2026-11-27", practiceEnd: "2026-11-29" },
+];
 const base = { type: "event", club: "Mime Club", title: "N2O", date: "2026-10-21", startMin: 18 * 60, endMin: 21 * 60, items: { "dept-lights": 1 } };
 const ctx = (bookings = []) => ({ today, fests, bookings });
 let n = 0; const t = (name, fn) => { fn(); n++; console.log("ok -", name); };
@@ -76,6 +80,21 @@ t("batch: empty slots rejected, events cannot use slots", () => {
   assert.match(validateBatch({ ...base, slots: [{ date: base.date, startMin: 1080, endMin: 1260 }] }, ctx()).error, /only for practice/);
 });
 t("batch: a plain single booking still works", () => assert.equal(validateBatch(base, ctx()).rows.length, 1));
+
+const pr2 = { ...pr, festId: "f2" };
+t("custom period: before it opens is rejected", () => assert.match(validateBooking({ ...pr2, date: "2026-11-09" }, ctx()).error, /from 2026-11-10 to 2026-11-18/));
+t("custom period: first and last day accepted", () => {
+  assert.ok(validateBooking({ ...pr2, date: "2026-11-10" }, ctx()).row);
+  assert.ok(validateBooking({ ...pr2, date: "2026-11-18" }, ctx()).row);
+});
+t("custom period: after it closes is rejected, even before the fest", () => assert.match(validateBooking({ ...pr2, date: "2026-11-19" }, ctx()).error, /can be booked from/));
+t("custom close date may be after the fest starts", () => assert.ok(validateBooking({ ...pr, festId: "f3", date: "2026-11-28" }, ctx()).row));
+t("custom open date in the past falls back to tomorrow", () => {
+  const w = practiceWindow({ start: "2026-11-05", practiceStart: "2026-10-01" }, today);
+  assert.equal(w.lo, "2026-10-18"); assert.equal(w.hi, "2026-11-03");
+});
+t("window is closed when it ends before tomorrow", () => assert.equal(practiceWindow({ start: "2026-11-05", practiceEnd: "2026-10-17" }, today).closed, true));
+t("default fest window is unchanged", () => assert.ok(validateBooking({ ...pr, date: "2026-11-03" }, ctx()).row));
 
 t("approvedClashes flags only approved overlaps", () => {
   const b = { id: "b", date: base.date, startMin: 1080, endMin: 1260, items: { "dept-lights": 1, "dept-sounds": 1 } };

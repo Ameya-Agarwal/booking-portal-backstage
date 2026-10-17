@@ -14,6 +14,14 @@ const mapBooking = (r) => ({
   createdBy: r.created_by, createdByName: r.created_by_name,
 });
 
+const NEEDS_MIGRATION = "The database needs the one-time update in the README (migrations/001_fest_practice_period.sql) before custom booking periods can be saved.";
+
+function checkPracticePeriod(ps, pe) {
+  if ((ps && !isDate(ps)) || (pe && !isDate(pe))) return "Check the practice dates.";
+  if (ps && pe && pe < ps) return "Practice cannot close before it opens.";
+  return null;
+}
+
 async function readBody(request) {
   try { return await request.json(); } catch { return null; }
 }
@@ -34,8 +42,11 @@ async function loadBookings(env, today) {
   return results.map(mapBooking);
 }
 async function loadFests(env) {
-  const { results } = await env.DB.prepare("SELECT id, name, start, end FROM fests ORDER BY start").all();
-  return results;
+  const { results } = await env.DB.prepare("SELECT * FROM fests ORDER BY start").all();
+  return results.map((r) => ({
+    id: r.id, name: r.name, start: r.start, end: r.end,
+    practiceStart: r.practice_start || null, practiceEnd: r.practice_end || null,
+  }));
 }
 
 export async function onRequest({ request, env, params }) {
@@ -131,9 +142,34 @@ export async function onRequest({ request, env, params }) {
         const name = String((body && body.name) || "").trim().slice(0, 80);
         if (!name || !isDate(body && body.start) || !isDate(body && body.end)) return fail(400, "Enter the fest name and both dates.");
         if (body.end < body.start) return fail(400, "The last day cannot be before the first day.");
+        const ps = body.practiceStart || null, pe = body.practiceEnd || null;
+        const bad = checkPracticePeriod(ps, pe);
+        if (bad) return fail(400, bad);
         const id = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-        await env.DB.prepare("INSERT INTO fests (id,name,start,end) VALUES (?,?,?,?)").bind(id, name, body.start, body.end).run();
+        try {
+          if (ps || pe) {
+            await env.DB.prepare("INSERT INTO fests (id,name,start,end,practice_start,practice_end) VALUES (?,?,?,?,?,?)").bind(id, name, body.start, body.end, ps, pe).run();
+          } else {
+            await env.DB.prepare("INSERT INTO fests (id,name,start,end) VALUES (?,?,?,?)").bind(id, name, body.start, body.end).run();
+          }
+        } catch (e) {
+          if (/no such column|has no column/i.test(String(e))) return fail(500, NEEDS_MIGRATION);
+          throw e;
+        }
         return json({ id }, 201);
+      }
+      if (method === "POST" && parts.length === 3 && parts[2] === "period") {
+        const body = (await readBody(request)) || {};
+        const ps = body.start || null, pe = body.end || null;
+        const bad = checkPracticePeriod(ps, pe);
+        if (bad) return fail(400, bad);
+        try {
+          await env.DB.prepare("UPDATE fests SET practice_start = ?, practice_end = ? WHERE id = ?").bind(ps, pe, parts[1]).run();
+        } catch (e) {
+          if (/no such column|has no column/i.test(String(e))) return fail(500, NEEDS_MIGRATION);
+          throw e;
+        }
+        return json({ ok: true });
       }
       if (method === "DELETE" && parts.length === 2) {
         await env.DB.prepare("DELETE FROM fests WHERE id = ?").bind(parts[1]).run();
