@@ -30,3 +30,5 @@ When staff approve, decline or withdraw a booking, the club that made it gets an
 4. In Cloudflare, add two secrets to the Pages project (Settings, Variables and Secrets): `MAIL_WEBHOOK_URL` (the Web app URL) and `MAIL_WEBHOOK_SECRET` (the same value as `MAIL_SECRET`). Then redeploy.
 
 For local testing, put both in a `.dev.vars` file. If either is missing, no emails are sent and everything else works as before. A failed email is logged and never blocks the decision. Google limits how many emails an account can send per day (about 100 for a personal Gmail account, more for a college Google Workspace account). After editing the script, deploy it again as a new version.
+
+-
