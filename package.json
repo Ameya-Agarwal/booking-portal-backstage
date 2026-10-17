@@ -1,0 +1,15 @@
+{
+  "name": "main-audi-bookings-portal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public --local",
+    "db:init:local": "wrangler d1 execute main-audi-bookings --local --file=schema.sql",
+    "db:init": "wrangler d1 execute main-audi-bookings --remote --file=schema.sql",
+    "deploy": "wrangler pages deploy public --project-name main-audi-bookings",
+    "test": "node test/rules.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
