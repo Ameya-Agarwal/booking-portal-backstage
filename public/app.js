@@ -3,8 +3,8 @@
 
 /* House rules come from the server (src/lib.js). These are only first-paint defaults. */
 var CONFIG = {
-  eventLeadDays:3, eventMaxDays:7, practiceLeadDays:1, practiceWindowDays:14,
-  practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24, maxSlotsPerRequest:10
+  eventLeadDays:3, eventMaxDays:7, practiceLeadDays:1,
+  practiceCloseDays:2, practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24, maxSlotsPerRequest:10
 };
 var DEFAULTS = [
   {id:"dept-lights",name:"Department of Lights",group:"lights",kind:"department",qty:1},
@@ -131,8 +131,8 @@ function allSlots(f){
 function upcomingFests(){return S.fests.filter(function(f){return f.start>today();}).sort(function(a,b){return a.start<b.start?-1:1;});}
 function prWindow(f){
   if(!f) return null;
-  var lo=addDays(f.start,-CONFIG.practiceWindowDays), hi=addDays(f.start,-1), earliest=addDays(today(),CONFIG.practiceLeadDays);
-  return {lo:lo>earliest?lo:earliest, hi:hi, closed:hi<earliest};
+  var lo=addDays(today(),CONFIG.practiceLeadDays), hi=addDays(f.start,-CONFIG.practiceCloseDays);
+  return {lo:lo, hi:hi, closed:hi<lo};
 }
 function hourCount(date,h){
   return S.bookings.filter(function(b){return blocking(b)&&b.date===date&&b.startMin<(h+1)*60&&b.endMin>h*60;}).length;
@@ -140,13 +140,13 @@ function hourCount(date,h){
 function practiceView(){
   var fests=upcomingFests();
   if(!fests.length){
-    return '<div class="empty"><b>No fests announced</b>Practice slots open once the stage controls departments add a fest. You can book up to '+CONFIG.practiceWindowDays+' days before it starts.</div>';
+    return '<div class="empty"><b>No fests announced</b>Practice slots open once the stage controls departments add a fest. You can book from tomorrow until '+CONFIG.practiceCloseDays+' days before it starts.</div>';
   }
   var f=S.pr;
   if(!fests.some(function(x){return x.id===f.festId;})) f.festId=fests[0].id;
   var fest=fests.filter(function(x){return x.id===f.festId;})[0], w=prWindow(fest);
   var opts=fests.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===f.festId?" selected":"")+'>'+esc(x.name)+' · starts '+fmtD(x.start)+'</option>';}).join("");
-  var left='<section class="panel"><header><h2>Book a practice slot</h2><p class="hint">Rehearse on stage with real lights and sound in the '+CONFIG.practiceWindowDays+' days before a fest. Slots are 2 hours by default.</p></header>'
+  var left='<section class="panel"><header><h2>Book a practice slot</h2><p class="hint">Rehearse on stage with real lights and sound Book from tomorrow until '+CONFIG.practiceCloseDays+' days before the fest starts. Slots are 2 hours by default.</p></header>'
     +'<div class="field"><label for="pr-fest">Fest</label><select id="pr-fest" data-bind="pr.festId" data-rr="1">'+opts+'</select></div>';
   var win=null;
   if(w.closed){
@@ -262,11 +262,11 @@ function deskView(){
   }
   if(S.sub==="fests"){
     var fl=S.fests.slice().sort(function(a,b){return a.start<b.start?-1:1;}).map(function(f){
-      return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.start)+' → '+esc(f.end)+'</td><td class="small">Practice '+esc(fmtD(addDays(f.start,-CONFIG.practiceWindowDays)))+' – '+esc(fmtD(addDays(f.start,-1)))+'</td>'
+      return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.start)+' → '+esc(f.end)+'</td><td class="small">'+esc(fmtD(addDays(f.start,-CONFIG.practiceCloseDays)))+'</td>'
         +'<td>'+(S.confirm==="fest:"+f.id?'<button class="btn danger sm" data-act="del-fest" data-id="'+esc(f.id)+'">Remove</button> <button class="btn ghost sm" data-act="noconfirm">Keep</button>':'<button class="btn ghost sm" data-act="del-fest" data-id="'+esc(f.id)+'">Remove</button>')+'</td></tr>';
     }).join("");
-    h+='<div class="cols"><section class="panel"><header><h2>Fests</h2><p class="hint">Practice slots open for each fest in the '+CONFIG.practiceWindowDays+' days before its first day.</p></header>'
-      +(fl?'<div class="tblwrap"><table class="tbl"><thead><tr><th>Fest</th><th>Dates</th><th>Practice window</th><th></th></tr></thead><tbody>'+fl+'</tbody></table></div>':'<div class="empty"><b>No fests yet</b>Add the first one to open practice booking.</div>')+'</section>'
+    h+='<div class="cols"><section class="panel"><header><h2>Fests</h2><p class="hint">Clubs can book practice from the day after they ask until '+CONFIG.practiceCloseDays+' days before a fest starts.</p></header>'
+      +(fl?'<div class="tblwrap"><table class="tbl"><thead><tr><th>Fest</th><th>Dates</th><th>Last practice day</th><th></th></tr></thead><tbody>'+fl+'</tbody></table></div>':'<div class="empty"><b>No fests yet</b>Add the first one to open practice booking.</div>')+'</section>'
       +'<section class="panel"><header><h3>Add a fest</h3></header>'
       +'<div class="field"><label for="fs-name">Fest name</label><input type="text" id="fs-name" data-bind="fs.name" value="'+esc(S.fs.name)+'"></div>'
       +'<div class="row2"><div class="field"><label for="fs-start">First day</label><input type="date" id="fs-start" data-bind="fs.start" value="'+esc(S.fs.start)+'"></div>'

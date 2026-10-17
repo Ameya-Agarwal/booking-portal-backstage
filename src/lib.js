@@ -4,7 +4,7 @@ export const CONFIG = {
   eventLeadDays: 3,        // events must be booked at least this many days ahead
   eventMaxDays: 7,         // events can be booked no more than this many days ahead
   practiceLeadDays: 1,     // practice must be booked at least this many days ahead
-  practiceWindowDays: 14,  // practice is allowed this many days before a fest starts
+  practiceCloseDays: 2,    // last practice day is this many days before a fest starts
   practiceFromHour: 16,    // practice day opens
   practiceToHour: 22,      // practice day closes
   practiceMaxHours: 2,     // longest single practice booking
@@ -160,10 +160,9 @@ export function validateBooking(input, ctx) {
     const fest = (ctx.fests || []).find((f) => f.id === input.festId);
     if (!fest) return err("Choose a fest.");
     festId = fest.id;
-    const lo = addDays(fest.start, -CONFIG.practiceWindowDays), hi = addDays(fest.start, -1);
-    const earliest = addDays(ctx.today, CONFIG.practiceLeadDays);
-    if (date < (lo > earliest ? lo : earliest) || date > hi) {
-      return err(`Practice for ${fest.name} runs from ${lo > earliest ? lo : earliest} to ${hi}.`);
+    const earliest = addDays(ctx.today, CONFIG.practiceLeadDays), hi = addDays(fest.start, -CONFIG.practiceCloseDays);
+    if (date < earliest || date > hi) {
+      return err(`Practice for ${fest.name} can be booked from ${earliest} to ${hi}.`);
     }
     if (s % 60 || e % 60) return err("Practice slots are whole hours.");
     if (s < CONFIG.practiceFromHour * 60 || e > CONFIG.practiceToHour * 60) {

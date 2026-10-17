@@ -34,8 +34,16 @@ t("back-to-back bookings do not clash", () => {
 
 const pr = { type: "practice", club: "Dance Club", title: "", festId: "f1", date: "2026-10-30", startMin: 16 * 60, endMin: 18 * 60, items: { "equip-sounds": 1 } };
 t("accepts practice inside the 14-day window", () => { const r = validateBooking(pr, ctx()); assert.ok(r.row); assert.equal(r.row.title, "Practice"); });
-t("rejects practice earlier than 14 days before", () => assert.match(validateBooking({ ...pr, date: "2026-10-20" }, ctx()).error, /runs from 2026-10-22 to 2026-11-04/));
-t("rejects practice on or after fest start", () => assert.match(validateBooking({ ...pr, date: "2026-11-05" }, ctx()).error, /runs from/));
+t("practice can be booked from tomorrow", () => {
+  assert.ok(validateBooking({ ...pr, date: "2026-10-18" }, ctx()).row);
+  assert.match(validateBooking({ ...pr, date: "2026-10-17" }, ctx()).error, /from 2026-10-18 to 2026-11-03/);
+});
+t("practice far ahead of the fest is allowed", () => assert.ok(validateBooking({ ...pr, date: "2026-10-20" }, ctx()).row));
+t("practice closes 2 days before the fest", () => {
+  assert.ok(validateBooking({ ...pr, date: "2026-11-03" }, ctx()).row);
+  assert.match(validateBooking({ ...pr, date: "2026-11-04" }, ctx()).error, /can be booked from/);
+});
+t("rejects practice on or after fest start", () => assert.match(validateBooking({ ...pr, date: "2026-11-05" }, ctx()).error, /can be booked from/));
 t("rejects practice longer than 2 hours", () => assert.match(validateBooking({ ...pr, endMin: 19 * 60 }, ctx()).error, /at most 2 hours/));
 t("rejects practice outside 16:00-22:00", () => assert.match(validateBooking({ ...pr, startMin: 14 * 60, endMin: 16 * 60 }, ctx()).error, /Practice runs/));
 t("rejects practice that is not whole hours", () => assert.match(validateBooking({ ...pr, startMin: 16 * 60 + 30, endMin: 18 * 60 + 30 }, ctx()).error, /whole hours/));
