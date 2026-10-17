@@ -17,7 +17,7 @@ var S = {
   resources:DEFAULTS.slice(), fests:[], bookings:[],
   ev:{club:"", title:"", date:"", start:"18:00", end:"21:00", items:{}},
   pr:{festId:"", club:"", title:"", date:"", hours:[], slots:[], items:{}},
-  fs:{name:"", start:"", end:"", ps:"", pe:""}, pp:{},
+  fs:{name:"", start:"", end:"", ps:"", pe:""}, pp:{}, notes:{},
   sched:{date:""}, flash:null, confirm:null, busy:false, showStaff:false, pw:""
 };
 var session=null, staffToken=null, lastSig="", app=document.getElementById("app");
@@ -236,9 +236,19 @@ function bookingCard(b,opt){
   if(opt.conf&&opt.conf.length) h+=opt.conf.map(function(c){return '<div class="warn">⚠ '+esc(c)+'</div>';}).join("");
   var acts="";
   if(opt.queue){
-    h+='<div class="field"><label for="note-'+esc(b.id)+'">Note to the club (optional)</label><input type="text" id="note-'+esc(b.id)+'"></div>';
+    h+='<div class="field"><label for="note-'+esc(b.id)+'">Note to the club (optional)</label><input type="text" id="note-'+esc(b.id)+'" data-note="'+esc(b.id)+'" value="'+esc(S.notes[b.id]||"")+'"></div>';
     acts+='<button class="btn sm" data-act="approve" data-id="'+esc(b.id)+'"'+((opt.conf&&opt.conf.length)||S.busy?" disabled":"")+'>Approve</button>'
       +'<button class="btn danger sm" data-act="reject" data-id="'+esc(b.id)+'"'+(S.busy?" disabled":"")+'>Decline</button>';
+  }
+  if(opt.revoke||opt.reapprove){
+    h+='<div class="field"><label for="note-'+esc(b.id)+'">Note to the club (optional)</label><input type="text" id="note-'+esc(b.id)+'" data-note="'+esc(b.id)+'" value="'+esc(S.notes[b.id]||"")+'"></div>';
+    if(opt.revoke){
+      acts+= S.confirm==="revoke:"+b.id
+        ? '<button class="btn danger sm" data-act="revoke" data-id="'+esc(b.id)+'"'+(S.busy?" disabled":"")+'>Yes, withdraw approval</button><button class="btn ghost sm" data-act="noconfirm">Keep it approved</button>'
+        : '<button class="btn danger sm" data-act="revoke" data-id="'+esc(b.id)+'">Withdraw approval</button>';
+    }else{
+      acts+='<button class="btn sm" data-act="approve" data-id="'+esc(b.id)+'"'+((opt.conf&&opt.conf.length)||S.busy?" disabled":"")+'>Approve again</button>';
+    }
   }
   if(opt.cancel&&blocking(b)){
     acts+= S.confirm==="cancel:"+b.id
@@ -271,8 +281,18 @@ function deskView(){
   var h='<div class="sub" role="tablist">'+subs.map(function(s){return '<button role="tab" data-act="sub" data-v="'+s[0]+'" aria-selected="'+(S.sub===s[0])+'">'+s[1]+'</button>';}).join("")+'</div>';
   if(S.sub==="queue"){
     var q=S.bookings.filter(function(b){return b.status==="pending";}).sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.startMin-b.startMin;});
+    var t=today(), byDate=function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.startMin-b.startMin;};
+    var ap=S.bookings.filter(function(b){return b.status==="approved"&&b.date>=t;}).sort(byDate);
+    var dn=S.bookings.filter(function(b){return b.status==="rejected"&&b.date>=t;}).sort(byDate);
+    h+='<h3 style="margin-bottom:12px">Waiting for approval</h3>';
     h+= q.length? '<div class="list">'+q.map(function(b){return bookingCard(b,{queue:true,who:true,conf:conflicts(b)});}).join("")+'</div>'
       : '<div class="empty"><b>Queue is clear</b>New requests appear here for approval.</div>';
+    h+='<h3 style="margin:28px 0 12px">Approved, upcoming</h3>';
+    h+= ap.length? '<div class="list">'+ap.map(function(b){return bookingCard(b,{revoke:true,who:true});}).join("")+'</div>'
+      : '<p class="hint">No upcoming approved bookings.</p>';
+    h+='<h3 style="margin:28px 0 12px">Declined or withdrawn, upcoming</h3>';
+    h+= dn.length? '<div class="list">'+dn.map(function(b){return bookingCard(b,{reapprove:true,who:true,conf:conflicts(b)});}).join("")+'</div>'
+      : '<p class="hint">Nothing declined or withdrawn.</p>';
   }
   if(S.sub==="fests"){
     var fl=S.fests.slice().sort(function(a,b){return a.start<b.start?-1:1;}).map(function(f){
@@ -446,8 +466,13 @@ document.addEventListener("click",function(ev){
   if(act==="submit-pr"){submit("pr");return;}
   if(act==="approve"||act==="reject"){
     var note=(document.getElementById("note-"+id)||{}).value||"";
-    run(function(){return api("bookings/"+id+"/decide",{method:"POST",body:{status:act==="approve"?"approved":"rejected",note:note}});},act==="approve"?"Approved.":"Declined.");
+    run(function(){return api("bookings/"+id+"/decide",{method:"POST",body:{status:act==="approve"?"approved":"rejected",note:note}}).then(function(r){delete S.notes[id];return r;});},act==="approve"?"Approved.":"Declined.");
     return;
+  }
+  if(act==="revoke"){
+    if(S.confirm!=="revoke:"+id){S.confirm="revoke:"+id;render();return;}
+    var rn=(document.getElementById("note-"+id)||{}).value||"";
+    S.confirm=null; run(function(){return api("bookings/"+id+"/decide",{method:"POST",body:{status:"rejected",note:rn}}).then(function(r){delete S.notes[id];return r;});},"Approval withdrawn. The slot is free again."); return;
   }
   if(act==="cancel"){
     if(S.confirm!=="cancel:"+id){S.confirm="cancel:"+id;render();return;}
@@ -483,6 +508,7 @@ document.addEventListener("keydown",function(ev){ if(ev.key==="Enter"&&ev.target
 function onField(ev,committed){
   var t=ev.target;
   if(t.id==="st-pw"){S.pw=t.value;return;}
+  if(t.dataset.note){S.notes[t.dataset.note]=t.value;return;}
   if(t.dataset.pp){var q=t.dataset.pp.split(":"); S.pp[q[1]]=S.pp[q[1]]||{}; S.pp[q[1]][q[0]]=t.value; return;}
   if(t.dataset.bind){
     setPath(t.dataset.bind,t.value);
