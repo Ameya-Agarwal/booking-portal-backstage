@@ -13,3 +13,7 @@ Staff can set when clubs may book practice for each fest: Desk, then Fests. Fill
 
 Until you do, everything else keeps working. Only saving a custom period shows a message asking for this update. New databases created from `schema.sql` already have the columns.
 -
+
+## Withdrawing and re-approving
+
+In the Desk's Approvals tab, staff see three lists: requests waiting for approval, upcoming approved bookings (each with a **Withdraw approval** button and an optional note to the club), and upcoming declined or withdrawn requests (each with **Approve again**). A withdrawn booking shows to the club as Declined, with the note. A booking the club cancelled itself can't be approved again. Approving is refused if an approved booking already holds the same department or equipment at that time.

@@ -122,13 +122,17 @@ export async function onRequest({ request, env, params }) {
         const body = await readBody(request);
         const status = body && body.status;
         if (status !== "approved" && status !== "rejected") return fail(400, "Choose approve or decline.");
-        if (b.status !== "pending") return fail(400, "This request was already reviewed.");
+        // Pending requests can be approved or declined. An approval can be withdrawn,
+        // and a declined or withdrawn request can be approved later. Cancelled ones stay closed.
+        const from = status === "approved" ? ["pending", "rejected"] : ["pending", "approved"];
+        if (!from.includes(b.status)) return fail(400, "That booking's status has changed. Refresh the page to see where it stands.");
         if (status === "approved") {
           const all = await loadBookings(env, today);
           const clash = approvedClashes(b, all);
           if (clash.length) return fail(409, "Already held by an approved booking: " + clash.join(", ") + ".");
         }
-        const note = String((body && body.note) || "").trim().slice(0, 200);
+        let note = String((body && body.note) || "").trim().slice(0, 200);
+        if (status === "rejected" && b.status === "approved" && !note) note = "Approval withdrawn by the desk.";
         await env.DB.prepare("UPDATE bookings SET status=?, note=?, decided_by=?, decided_at=? WHERE id=?")
           .bind(status, note, user.email, new Date().toISOString(), id).run();
         return json({ ok: true });
