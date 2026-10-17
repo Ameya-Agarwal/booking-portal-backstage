@@ -22,9 +22,11 @@ In the Desk's Approvals tab, staff see three lists: requests waiting for approva
 
 ## Decision emails
 
-When staff approve, decline or withdraw a booking, the club that made it gets an email saying so, with the date, time, items and any note from the desk. Emails go out through [Resend](https://resend.com). Set two secrets to turn them on:
+When staff approve, decline or withdraw a booking, the club that made it gets an email saying so, with the date, time, items and any note from the desk. The email is sent from a Google account through a small Google Apps Script, so no domain is needed.
 
-    npx wrangler pages secret put RESEND_API_KEY
-    npx wrangler pages secret put EMAIL_FROM
+1. Go to [script.google.com](https://script.google.com), click New project, and paste in the contents of `apps-script/Code.gs`.
+2. Open Project Settings (the gear), then Script properties, then Add script property. Name it `MAIL_SECRET` and give it a long random value.
+3. Click Deploy, then New deployment, pick the type Web app, set Execute as to Me and Who has access to Anyone, and deploy. Approve the Google permission prompts. Copy the Web app URL.
+4. In Cloudflare, add two secrets to the Pages project (Settings, Variables and Secrets): `MAIL_WEBHOOK_URL` (the Web app URL) and `MAIL_WEBHOOK_SECRET` (the same value as `MAIL_SECRET`). Then redeploy.
 
-`EMAIL_FROM` must be an address on a domain you have verified in Resend, for example `Main Audi <bookings@yourdomain.in>`. For local testing, put both in a `.dev.vars` file. If either is missing, no emails are sent and everything else works as before. A failed email is logged and never blocks the decision.
+For local testing, put both in a `.dev.vars` file. If either is missing, no emails are sent and everything else works as before. A failed email is logged and never blocks the decision. Google limits how many emails an account can send per day (about 100 for a personal Gmail account, more for a college Google Workspace account). After editing the script, deploy it again as a new version.
