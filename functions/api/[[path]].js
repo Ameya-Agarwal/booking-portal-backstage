@@ -2,6 +2,7 @@
 import {
   CONFIG, RESOURCES, json, fail, todayIST, addDays, isDate,
   signToken, verifyToken, safeEqual, verifyGoogle, validateBatch, approvedClashes,
+  buildDecisionEmail, sendEmail,
 } from "../../src/lib.js";
 
 const SESSION_SECONDS = 60 * 60 * 24 * 14; // sign-in lasts 14 days
@@ -49,7 +50,7 @@ async function loadFests(env) {
   }));
 }
 
-export async function onRequest({ request, env, params }) {
+export async function onRequest({ request, env, params, waitUntil }) {
   if (!env.SESSION_SECRET) return fail(500, "The server is missing SESSION_SECRET.");
   const parts = Array.isArray(params.path) ? params.path : [params.path].filter(Boolean);
   const method = request.method;
@@ -135,6 +136,9 @@ export async function onRequest({ request, env, params }) {
         if (status === "rejected" && b.status === "approved" && !note) note = "Approval withdrawn by the desk.";
         await env.DB.prepare("UPDATE bookings SET status=?, note=?, decided_by=?, decided_at=? WHERE id=?")
           .bind(status, note, user.email, new Date().toISOString(), id).run();
+        // Email the club in the background so a slow mail service never delays the desk.
+        const mail = sendEmail(env, { to: b.createdBy, ...buildDecisionEmail({ ...b, note }, status, b.status) });
+        if (waitUntil) waitUntil(mail);
         return json({ ok: true });
       }
     }

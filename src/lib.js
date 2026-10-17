@@ -235,3 +235,47 @@ export function approvedClashes(booking, bookings) {
   }
   return out;
 }
+
+/* ---------- decision emails ---------- */
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Builds the email telling a club how staff decided on `booking`.
+// `status` is the new status ("approved" | "rejected"); `previous` is the status before the decision.
+export function buildDecisionEmail(booking, status, previous) {
+  const what = booking.type === "practice" ? "practice slot" : "event";
+  const names = Object.keys(booking.items || {}).map((id) => RESOURCES.find((r) => r.id === id)?.name || id);
+  const withdrawn = status === "rejected" && previous === "approved";
+  const verdict = status === "approved" ? "confirmed" : withdrawn ? "withdrawn" : "declined";
+  const lines = [
+    `Hello ${booking.createdByName},`,
+    "",
+    `Your ${what} request "${booking.title}" for ${booking.club} has been ${verdict}.`,
+    "",
+    `Date: ${booking.date}`,
+    `Time: ${fmtMin(booking.startMin)} to ${fmtMin(booking.endMin)}`,
+    `Booked: ${names.join(", ")}`,
+  ];
+  if (booking.note) lines.push("", `Note from the desk: ${booking.note}`);
+  lines.push("", "Main Audi Bookings Portal");
+  const text = lines.join("\n");
+  const html = lines.map((l) => (l ? `<p>${escapeHtml(l)}</p>` : "")).join("");
+  return { subject: `Your booking "${booking.title}" is ${verdict}`, text, html };
+}
+
+// Sends one email through Resend. Does nothing when RESEND_API_KEY or EMAIL_FROM is not set,
+// and never throws, so a mail problem cannot break approving a booking.
+export async function sendEmail(env, { to, subject, text, html }) {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM || !to) return false;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, text, html }),
+    });
+    if (!res.ok) console.error("Email failed:", res.status, await res.text());
+    return res.ok;
+  } catch (e) {
+    console.error("Email failed:", e);
+    return false;
+  }
+}
