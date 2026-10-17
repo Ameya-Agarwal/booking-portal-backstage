@@ -12,3 +12,4 @@ Staff can set when clubs may book practice for each fest: Desk, then Fests. Fill
     ALTER TABLE fests ADD COLUMN practice_end TEXT;
 
 Until you do, everything else keeps working. Only saving a custom period shows a message asking for this update. New databases created from `schema.sql` already have the columns.
+-
