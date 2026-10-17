@@ -1,7 +1,7 @@
 // One catch-all handler for every /api/* route.
 import {
   CONFIG, RESOURCES, json, fail, todayIST, addDays, isDate,
-  signToken, verifyToken, safeEqual, verifyGoogle, validateBooking, approvedClashes,
+  signToken, verifyToken, safeEqual, verifyGoogle, validateBatch, approvedClashes,
 } from "../../src/lib.js";
 
 const SESSION_SECONDS = 60 * 60 * 24 * 14; // sign-in lasts 14 days
@@ -79,14 +79,19 @@ export async function onRequest({ request, env, params }) {
     if (route === "bookings" && method === "POST" && parts.length === 1) {
       const body = await readBody(request);
       const [bookings, fests] = await Promise.all([loadBookings(env, today), loadFests(env)]);
-      const v = validateBooking(body, { today, fests, bookings });
+      const v = validateBatch(body, { today, fests, bookings });
       if (v.error) return fail(400, v.error);
-      const r = v.row;
-      const id = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-      await env.DB.prepare(
-        "INSERT INTO bookings (id,type,club,title,date,start_min,end_min,items,fest_id,status,created_by,created_by_name,created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?,?)"
-      ).bind(id, r.type, r.club, r.title, r.date, r.startMin, r.endMin, JSON.stringify(r.items), r.festId, user.email, user.name, new Date().toISOString()).run();
-      return json({ id }, 201);
+      const now = new Date().toISOString();
+      const ids = [];
+      const stmts = v.rows.map((r) => {
+        const id = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+        ids.push(id);
+        return env.DB.prepare(
+          "INSERT INTO bookings (id,type,club,title,date,start_min,end_min,items,fest_id,status,created_by,created_by_name,created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?,?)"
+        ).bind(id, r.type, r.club, r.title, r.date, r.startMin, r.endMin, JSON.stringify(r.items), r.festId, user.email, user.name, now);
+      });
+      await env.DB.batch(stmts);
+      return json({ id: ids[0], ids }, 201);
     }
 
     if (route === "bookings" && parts.length === 3 && method === "POST") {

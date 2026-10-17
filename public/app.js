@@ -4,7 +4,7 @@
 /* House rules come from the server (src/lib.js). These are only first-paint defaults. */
 var CONFIG = {
   eventLeadDays:3, eventMaxDays:7, practiceLeadDays:1, practiceWindowDays:14,
-  practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24
+  practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24, maxSlotsPerRequest:10
 };
 var DEFAULTS = [
   {id:"dept-lights",name:"Department of Lights",group:"lights",kind:"department",qty:1},
@@ -16,7 +16,7 @@ var S = {
   tab:"book", sub:"queue", me:null, ready:false, googleClientId:"", domain:"", loadErr:null,
   resources:DEFAULTS.slice(), fests:[], bookings:[],
   ev:{club:"", title:"", date:"", start:"18:00", end:"21:00", items:{}},
-  pr:{festId:"", club:"", title:"", date:"", hours:[], items:{}},
+  pr:{festId:"", club:"", title:"", date:"", hours:[], slots:[], items:{}},
   fs:{name:"", start:"", end:""},
   sched:{date:""}, flash:null, confirm:null, busy:false, showStaff:false, pw:""
 };
@@ -123,6 +123,11 @@ function bookView(){
     +'</section><section class="panel">'+pickerHTML("ev",f,win)+'</section></div>';
 }
 
+function allSlots(f){
+  var out=f.slots.slice();
+  if(f.hours.length&&f.date) out.push({date:f.date,startMin:f.hours[0]*60,endMin:(f.hours[f.hours.length-1]+1)*60});
+  return out;
+}
 function upcomingFests(){return S.fests.filter(function(f){return f.start>today();}).sort(function(a,b){return a.start<b.start?-1:1;});}
 function prWindow(f){
   if(!f) return null;
@@ -155,12 +160,18 @@ function practiceView(){
         var n=hourCount(f.date,h);
         chips+='<button type="button" class="chip" data-act="hour" data-h="'+h+'" aria-pressed="'+(f.hours.indexOf(h)>=0)+'">'+pad(h)+':00<small>'+(n?n+" booked":"open")+'</small></button>';
       }
-      left+='<div class="field"><span class="lbl">Hours on '+fmtD(f.date)+'</span><div class="chips">'+chips+'</div><span class="hint">Tap a start hour to take a 2-hour slot. Tap the second hour to shorten it to 1 hour.</span></div>';
+      left+='<div class="field"><span class="lbl">Hours on '+fmtD(f.date)+'</span><div class="chips">'+chips+'</div><span class="hint">Tap a start hour to take a 2-hour slot. Tap the second hour to shorten it to 1 hour.</span></div>'
+        +'<div class="actions"><button class="btn ghost sm" data-act="add-slot"'+(f.hours.length?"":" disabled")+'>Add this slot to the request</button><span class="hint">Pick another day or hour to add more, up to '+CONFIG.maxSlotsPerRequest+' slots.</span></div>';
       if(f.hours.length) win={date:f.date,s:f.hours[0]*60,e:(f.hours[f.hours.length-1]+1)*60};
+    }
+    if(f.slots.length){
+      left+='<div class="field"><span class="lbl">Slots in this request ('+f.slots.length+')</span><div class="chips">'
+        +f.slots.map(function(sl,i){return '<button type="button" class="chip" data-act="rm-slot" data-i="'+i+'" title="Remove this slot" aria-label="Remove slot '+esc(fmtD(sl.date))+' '+fmtT(sl.startMin)+'">'+esc(fmtD(sl.date))+'<small>'+fmtT(sl.startMin)+'–'+fmtT(sl.endMin)+' ✕</small></button>';}).join("")
+        +'</div></div>';
     }
     left+='<div class="field"><label for="pr-club">Club or department</label><input type="text" id="pr-club" data-bind="pr.club" autocomplete="organization" placeholder="e.g. Dance Club, Mime Club" value="'+esc(f.club)+'"></div>'
       +'<div class="field"><label for="pr-title">What are you practising?</label><input type="text" id="pr-title" data-bind="pr.title" placeholder="Cue run, sound check, full dress" value="'+esc(f.title)+'"></div>'
-      +'<div class="actions"><button class="btn" data-act="submit-pr"'+(S.busy?" disabled":"")+'>Send request</button></div></section>';
+      +'<div class="actions"><button class="btn" data-act="submit-pr"'+(S.busy?" disabled":"")+'>Send request'+(allSlots(f).length>1?' ('+allSlots(f).length+' slots)':'')+'</button></div></section>';
   }
   return '<div class="cols">'+left+(w.closed?"":'<section class="panel">'+pickerHTML("pr",f,win)+'</section>')+'</div>';
 }
@@ -321,7 +332,8 @@ async function onCredential(resp){
 /* ---- actions ---- */
 function validate(kind){
   if(!S.me) return "Sign in to send a request.";
-  var f=kind==="ev"?S.ev:S.pr, club=(f.club||"").trim();
+  if(kind==="pr") return validatePractice();
+  var f=S.ev, club=(f.club||"").trim();
   if(!club) return "Enter your club or department.";
   var title,date,s,e,festId=null;
   if(kind==="ev"){
@@ -334,13 +346,6 @@ function validate(kind){
     s=toMin(f.start); e=toMin(f.end);
     if(e<=s) return "The end time must be after the start time.";
     if(s<CONFIG.dayFromHour*60) return "Bookings start from "+pad(CONFIG.dayFromHour)+":00.";
-  }else{
-    var fest=S.fests.filter(function(x){return x.id===f.festId;})[0]; if(!fest) return "Choose a fest.";
-    var w=prWindow(fest); if(w.closed) return "The practice window for this fest has closed.";
-    date=f.date; if(!date||date<w.lo||date>w.hi) return "Pick a practice date between "+fmtD(w.lo)+" and "+fmtD(w.hi)+".";
-    if(!f.hours.length) return "Pick at least one hour.";
-    title=(f.title||"").trim()||"Practice"; festId=fest.id;
-    s=f.hours[0]*60; e=(f.hours[f.hours.length-1]+1)*60;
   }
   var ids=Object.keys(f.items);
   if(!ids.length) return "Choose at least one department or piece of equipment.";
@@ -350,13 +355,34 @@ function validate(kind){
   }
   return {type:kind==="ev"?"event":"practice",club:club,title:title,date:date,startMin:s,endMin:e,items:Object.assign({},f.items),festId:festId};
 }
+function validatePractice(){
+  if(!S.me) return "Sign in to send a request.";
+  var f=S.pr, club=(f.club||"").trim();
+  if(!club) return "Enter your club or department.";
+  var fest=S.fests.filter(function(x){return x.id===f.festId;})[0]; if(!fest) return "Choose a fest.";
+  var w=prWindow(fest); if(w.closed) return "The practice window for this fest has closed.";
+  var slots=allSlots(f); if(!slots.length) return "Pick at least one hour.";
+  if(slots.length>CONFIG.maxSlotsPerRequest) return "You can request up to "+CONFIG.maxSlotsPerRequest+" slots at once.";
+  var ids=Object.keys(f.items);
+  if(!ids.length) return "Choose at least one department or piece of equipment.";
+  for(var i=0;i<slots.length;i++){
+    var sl=slots[i], tag="Slot "+(i+1)+" ("+fmtD(sl.date)+", "+fmtT(sl.startMin)+"–"+fmtT(sl.endMin)+"): ";
+    if(sl.date<w.lo||sl.date>w.hi) return tag+"practice is open from "+fmtD(w.lo)+" to "+fmtD(w.hi)+".";
+    for(var j=0;j<i;j++){ if(slots[j].date===sl.date&&slots[j].startMin<sl.endMin&&slots[j].endMin>sl.startMin) return tag+"this overlaps another slot in your request."; }
+    for(var k=0;k<ids.length;k++){
+      var r=resById(ids[k]); if(!r) return "One of the chosen items does not exist.";
+      if(freeQty(r,sl.date,sl.startMin,sl.endMin)<1) return tag+r.name+" is not free for that time.";
+    }
+  }
+  return {type:"practice",club:club,title:(f.title||"").trim()||"Practice",festId:fest.id,items:Object.assign({},f.items),slots:slots};
+}
 async function submit(kind){
   var v=validate(kind); if(typeof v==="string"){say("err",v);return;}
   S.busy=true; render();
   try{
     await api("bookings",{method:"POST",body:v});
     store("atd.club",v.club);
-    var f=kind==="ev"?S.ev:S.pr; f.items={}; f.title=""; if(kind==="pr") f.hours=[];
+    var f=kind==="ev"?S.ev:S.pr; f.items={}; f.title=""; if(kind==="pr"){f.hours=[];f.slots=[];}
     lastSig=""; await load(true); S.busy=false; S.tab="mine";
     say("ok","Request sent. It holds the slot while the stage controls departments review it. Check the status here.");
   }catch(err){ S.busy=false; await load(true); say("err",err.message); }
@@ -384,6 +410,18 @@ document.addEventListener("click",function(ev){
     else { S.pr.hours=(h+1<CONFIG.practiceToHour)?[h,h+1]:[h]; }
     render();return;
   }
+  if(act==="add-slot"){
+    var ps=S.pr;
+    if(ps.hours.length&&ps.date){
+      var ns={date:ps.date,startMin:ps.hours[0]*60,endMin:(ps.hours[ps.hours.length-1]+1)*60};
+      if(ps.slots.length>=CONFIG.maxSlotsPerRequest){say("err","You can request up to "+CONFIG.maxSlotsPerRequest+" slots at once.");return;}
+      if(ps.slots.some(function(x){return x.date===ns.date&&x.startMin<ns.endMin&&x.endMin>ns.startMin;})){say("err","That time overlaps a slot you already added.");return;}
+      ps.slots.push(ns); ps.slots.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.startMin-b.startMin;});
+      ps.hours=[]; S.flash=null;
+    }
+    render();return;
+  }
+  if(act==="rm-slot"){S.pr.slots.splice(Number(t.dataset.i),1);render();return;}
   if(act==="day"){var n=Number(t.dataset.n); S.sched.date=n===0?today():addDays(S.sched.date||today(),n); render();return;}
   if(act==="submit-ev"){submit("ev");return;}
   if(act==="submit-pr"){submit("pr");return;}
@@ -421,7 +459,8 @@ function onField(ev,committed){
   if(t.id==="st-pw"){S.pw=t.value;return;}
   if(t.dataset.bind){
     setPath(t.dataset.bind,t.value);
-    if(t.dataset.bind==="pr.festId"||t.dataset.bind==="pr.date"){S.pr.hours=[];}
+    if(t.dataset.bind==="pr.festId"){S.pr.hours=[];S.pr.slots=[];}
+    if(t.dataset.bind==="pr.date"){S.pr.hours=[];}
     if(committed&&t.dataset.rr) render();
     return;
   }

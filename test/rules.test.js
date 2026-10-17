@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
+import { validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
 
 const today = "2026-10-17";
 const fests = [{ id: "f1", name: "Oasis", start: "2026-11-05", end: "2026-11-08" }];
@@ -40,6 +40,34 @@ t("rejects practice longer than 2 hours", () => assert.match(validateBooking({ .
 t("rejects practice outside 16:00-22:00", () => assert.match(validateBooking({ ...pr, startMin: 14 * 60, endMin: 16 * 60 }, ctx()).error, /Practice runs/));
 t("rejects practice that is not whole hours", () => assert.match(validateBooking({ ...pr, startMin: 16 * 60 + 30, endMin: 18 * 60 + 30 }, ctx()).error, /whole hours/));
 t("rejects practice for an unknown fest", () => assert.match(validateBooking({ ...pr, festId: "zzz" }, ctx()).error, /Choose a fest/));
+
+const batch = { ...pr, slots: [
+  { date: "2026-10-30", startMin: 960, endMin: 1080 },
+  { date: "2026-11-02", startMin: 1020, endMin: 1140 },
+] };
+delete batch.date; delete batch.startMin; delete batch.endMin;
+t("batch: several practice slots accepted as separate rows", () => { const r = validateBatch(batch, ctx()); assert.equal(r.rows.length, 2); assert.equal(r.rows[1].date, "2026-11-02"); });
+t("batch: one bad slot rejects the whole request and names it", () => {
+  const r = validateBatch({ ...batch, slots: [batch.slots[0], { date: "2026-11-05", startMin: 960, endMin: 1080 }] }, ctx());
+  assert.match(r.error, /^Slot 2 \(2026-11-05/);
+});
+t("batch: two slots that overlap each other are rejected", () => {
+  const r = validateBatch({ ...batch, slots: [batch.slots[0], { date: "2026-10-30", startMin: 1020, endMin: 1140 }] }, ctx());
+  assert.match(r.error, /Slot 2.*already booked/);
+});
+t("batch: slot clashing with an existing booking is rejected", () => {
+  const other = { id: "x", status: "approved", date: "2026-11-02", startMin: 1000, endMin: 1100, items: { "equip-sounds": 1 } };
+  assert.match(validateBatch(batch, ctx([other])).error, /Slot 2.*already booked/);
+});
+t("batch: more than 10 slots rejected", () => {
+  const many = Array.from({ length: 11 }, () => batch.slots[0]);
+  assert.match(validateBatch({ ...batch, slots: many }, ctx()).error, /up to 10/);
+});
+t("batch: empty slots rejected, events cannot use slots", () => {
+  assert.match(validateBatch({ ...batch, slots: [] }, ctx()).error, /at least one slot/);
+  assert.match(validateBatch({ ...base, slots: [{ date: base.date, startMin: 1080, endMin: 1260 }] }, ctx()).error, /only for practice/);
+});
+t("batch: a plain single booking still works", () => assert.equal(validateBatch(base, ctx()).rows.length, 1));
 
 t("approvedClashes flags only approved overlaps", () => {
   const b = { id: "b", date: base.date, startMin: 1080, endMin: 1260, items: { "dept-lights": 1, "dept-sounds": 1 } };
