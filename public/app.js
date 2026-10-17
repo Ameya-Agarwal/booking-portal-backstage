@@ -4,7 +4,7 @@
 /* House rules come from the server (src/lib.js). These are only first-paint defaults. */
 var CONFIG = {
   eventLeadDays:3, eventMaxDays:7, practiceLeadDays:1,
-  practiceCloseDays:2, practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24, maxSlotsPerRequest:10
+  practiceCloseDays:2, practiceFromHour:16, practiceToHour:22, practiceMaxHours:2, dayFromHour:8, dayToHour:24, maxSlotsPerRequest:10, eventsEnabled:false
 };
 var DEFAULTS = [
   {id:"dept-lights",name:"Department of Lights",group:"lights",kind:"department",qty:1},
@@ -13,7 +13,7 @@ var DEFAULTS = [
   {id:"equip-sounds",name:"Sounds Equipment",group:"sound",kind:"equipment",qty:1}
 ];
 var S = {
-  tab:"book", sub:"queue", me:null, ready:false, googleClientId:"", domain:"", loadErr:null,
+  tab:"practice", sub:"queue", me:null, ready:false, googleClientId:"", domain:"", loadErr:null,
   resources:DEFAULTS.slice(), fests:[], bookings:[],
   ev:{club:"", title:"", date:"", start:"18:00", end:"21:00", items:{}},
   pr:{festId:"", club:"", title:"", date:"", hours:[], slots:[], items:{}},
@@ -110,6 +110,12 @@ function pickerHTML(prefix,form,win){
   return html;
 }
 
+function defaultTab(){return CONFIG.eventsEnabled?"book":"practice";}
+function subtitle(){
+  return CONFIG.eventsEnabled
+    ? "Book the Departments of Lights and Sounds and their equipment for your event, and reserve practice hours before the fest."
+    : "Book the Departments of Lights and Sounds and their equipment for practice before the fest.";
+}
 function bookView(){
   var f=S.ev, min=addDays(today(),CONFIG.eventLeadDays), max=addDays(today(),CONFIG.eventMaxDays);
   var win=(f.date&&f.start&&f.end&&toMin(f.end)>toMin(f.start))?{date:f.date,s:toMin(f.start),e:toMin(f.end)}:null;
@@ -292,7 +298,7 @@ function loginView(){
   if(!S.ready) msg='<p class="hint">Loading…</p>';
   else if(!S.googleClientId) msg='<div class="flash err" style="margin:0">Sign-in is not set up yet. Set GOOGLE_CLIENT_ID for this site.</div>';
   else msg='<div id="gbtn"></div><p class="hint">Use your college Google account'+(S.domain?' (@'+esc(S.domain)+')':'')+'.</p>';
-  return '<header class="top"><h1>Main Audi Bookings Portal</h1><p>Book the Departments of Lights and Sounds and their equipment for your event, and reserve practice hours before the fest.</p></header>'
+  return '<header class="top"><h1>Main Audi Bookings Portal</h1><p>'+subtitle()+'</p></header>'
     +(S.flash?'<div class="flash '+S.flash.kind+'" role="status">'+esc(S.flash.text)+'</div>':'')
     +'<section class="panel login"><header><h2>Sign in to book</h2></header>'+msg+'</section>';
 }
@@ -302,9 +308,11 @@ function render(){
   if(a&&typeof a.selectionStart==="number"){try{sel=[a.selectionStart,a.selectionEnd];}catch(e){}}
   var tw=app.querySelector(".tlwrap"), sl=tw?tw.scrollLeft:0;
   if(!S.me){ app.innerHTML=loginView(); mountGoogle(0); return; }
-  if(S.tab==="desk"&&!isStaff()) S.tab="book";
+  if(S.tab==="book"&&!CONFIG.eventsEnabled) S.tab="practice";
+  if(S.tab==="desk"&&!isStaff()) S.tab=defaultTab();
   var pend=S.bookings.filter(function(b){return b.status==="pending";}).length;
-  var tabs=[["book","Book an event"],["practice","Practice slots"],["schedule","Schedule"],["mine","My bookings"]];
+  var tabs=[["practice","Practice slots"],["schedule","Schedule"],["mine","My bookings"]];
+  if(CONFIG.eventsEnabled) tabs.unshift(["book","Book an event"]);
   if(isStaff()) tabs.push(["desk","Desk"]);
   var flash=S.flash?'<div class="flash '+S.flash.kind+'" role="status">'+esc(S.flash.text)+'</div>':"";
   if(S.loadErr) flash='<div class="flash err" role="status">'+esc(S.loadErr)+'</div>'+flash;
@@ -314,7 +322,7 @@ function render(){
     : (S.showStaff
         ? '<input type="password" id="st-pw" placeholder="Staff password" autocomplete="current-password" value="'+esc(S.pw)+'"><button class="btn sm" data-act="staff-on">Enter</button><button class="btn ghost sm" data-act="staff-cancel">Cancel</button>'
         : '<button class="btn ghost sm" data-act="staff-show">Staff sign-in</button>');
-  app.innerHTML='<header class="top"><h1>Main Audi Bookings Portal</h1><p>Book the Departments of Lights and Sounds and their equipment for your event, and reserve practice hours before the fest.</p></header>'
+  app.innerHTML='<header class="top"><h1>Main Audi Bookings Portal</h1><p>'+subtitle()+'</p></header>'
     +'<div class="userbar"><span>Signed in as <b>'+esc(S.me.name)+'</b></span><div class="sp">'+staffBox+'<button class="btn ghost sm" data-act="signout">Sign out</button></div></div>'
     +'<nav class="tabs" role="tablist">'+tabs.map(function(t){return '<button role="tab" data-act="tab" data-v="'+t[0]+'" aria-selected="'+(S.tab===t[0])+'">'+t[1]+(t[0]==="desk"&&pend?'<span class="badge">'+pend+'</span>':"")+'</button>';}).join("")+'</nav>'
     +flash+body;
@@ -413,7 +421,7 @@ document.addEventListener("click",function(ev){
   if(act==="signout"){signOutLocal();S.flash=null;render();return;}
   if(act==="staff-show"){S.showStaff=true;render();var p=document.getElementById("st-pw");if(p)p.focus();return;}
   if(act==="staff-cancel"){S.showStaff=false;S.pw="";render();return;}
-  if(act==="staff-off"){staffToken=null;store("atd.staff",null);S.me.staff=false;S.tab="book";lastSig="";render();return;}
+  if(act==="staff-off"){staffToken=null;store("atd.staff",null);S.me.staff=false;S.tab=defaultTab();lastSig="";render();return;}
   if(act==="staff-on"){ staffLogin(); return; }
   if(act==="hour"){
     var h=Number(t.dataset.h), H=S.pr.hours, at=H.indexOf(h);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { practiceWindow, validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
 
+CONFIG.eventsEnabled = true; // event booking is switched off by default; the event rules are still tested
 const today = "2026-10-17";
 const fests = [
   { id: "f1", name: "Oasis", start: "2026-11-05", end: "2026-11-08" },
@@ -11,6 +12,12 @@ const base = { type: "event", club: "Mime Club", title: "N2O", date: "2026-10-21
 const ctx = (bookings = []) => ({ today, fests, bookings });
 let n = 0; const t = (name, fn) => { fn(); n++; console.log("ok -", name); };
 
+t("event booking can be switched off", () => {
+  CONFIG.eventsEnabled = false;
+  assert.match(validateBooking(base, ctx()).error, /switched off/);
+  assert.ok(validateBooking({ type: "practice", club: "Dance Club", festId: "f1", date: "2026-10-30", startMin: 960, endMin: 1080, items: { "equip-sounds": 1 } }, ctx()).row);
+  CONFIG.eventsEnabled = true;
+});
 t("accepts a valid event 4 days out", () => assert.ok(validateBooking(base, ctx()).row));
 t("rejects too little notice", () => assert.match(validateBooking({ ...base, date: "2026-10-19" }, ctx()).error, /at least 3 days/));
 t("rejects more than 7 days ahead", () => assert.match(validateBooking({ ...base, date: "2026-10-25" }, ctx()).error, /up to 7 days/));

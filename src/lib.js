@@ -11,6 +11,7 @@ export const CONFIG = {
   dayFromHour: 8,          // earliest event start
   dayToHour: 24,           // latest event end
   maxSlotsPerRequest: 10,  // practice slots one request can hold
+  eventsEnabled: false,    // set to true to bring back event booking (page tab and server)
 };
 
 export const RESOURCES = [
@@ -128,6 +129,7 @@ export function validateBooking(input, ctx) {
   if (!input || typeof input !== "object") return err("Invalid request.");
   const type = input.type;
   if (type !== "event" && type !== "practice") return err("Unknown booking type.");
+  if (type === "event" && !CONFIG.eventsEnabled) return err("Event booking is switched off. Only practice slots can be booked.");
 
   const club = String(input.club || "").trim().slice(0, 80);
   if (!club) return err("Enter your club or department.");
