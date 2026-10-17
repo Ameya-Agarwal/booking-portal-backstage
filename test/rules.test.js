@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { practiceWindow, validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG } from "../src/lib.js";
+import { practiceWindow, validateBatch, validateBooking, approvedClashes, signToken, verifyToken, safeEqual, emailAllowed, todayIST, addDays, CONFIG, buildDecisionEmail, sendEmail } from "../src/lib.js";
 
 CONFIG.eventsEnabled = true; // event booking is switched off by default; the event rules are still tested
 const today = "2026-10-17";
@@ -136,4 +136,30 @@ console.log("ok - token tamper, wrong secret, expiry rejected");
 assert.equal(await safeEqual("hunter2", "hunter2", secret), true);
 assert.equal(await safeEqual("hunter2", "hunter3", secret), false);
 console.log("ok - safeEqual");
-console.log(`\n${n + 2} checks passed`);
+
+const bk = { type: "practice", club: "Dance <Club>", title: "Prep", date: "2026-10-30", startMin: 960, endMin: 1080, items: { "equip-sounds": 1 }, createdBy: "club@bits-pilani.ac.in", createdByName: "Asha", note: "" };
+t("approval email says confirmed", () => {
+  const m = buildDecisionEmail(bk, "approved", "pending");
+  assert.match(m.subject, /confirmed/); assert.match(m.text, /16:00 to 18:00/); assert.match(m.text, /Sounds Equipment/);
+});
+t("decline email carries the desk note", () => {
+  const m = buildDecisionEmail({ ...bk, note: "Clashes with exams" }, "rejected", "pending");
+  assert.match(m.subject, /declined/); assert.match(m.text, /Clashes with exams/);
+});
+t("withdrawn approval is worded as withdrawn", () => assert.match(buildDecisionEmail(bk, "rejected", "approved").subject, /withdrawn/));
+t("email html escapes club input", () => assert.ok(!buildDecisionEmail(bk, "approved", "pending").html.includes("<Club>")));
+
+const realFetch = globalThis.fetch; let sent = null;
+globalThis.fetch = async (url, init) => { sent = { url, init }; return new Response("{}", { status: 200 }); };
+const mail = { to: "club@bits-pilani.ac.in", subject: "s", text: "t", html: "<p>t</p>" };
+assert.equal(await sendEmail({}, mail), false); assert.equal(sent, null);
+console.log("ok - no email when not configured");
+assert.equal(await sendEmail({ RESEND_API_KEY: "k", EMAIL_FROM: "Audi <a@x.in>" }, mail), true);
+assert.equal(sent.url, "https://api.resend.com/emails");
+assert.deepEqual(JSON.parse(sent.init.body).to, ["club@bits-pilani.ac.in"]);
+console.log("ok - email sent through Resend");
+globalThis.fetch = async () => { throw new Error("offline"); };
+assert.equal(await sendEmail({ RESEND_API_KEY: "k", EMAIL_FROM: "a@x.in" }, mail), false);
+console.log("ok - mail failure does not throw");
+globalThis.fetch = realFetch;
+console.log(`\n${n + 5} checks passed`);
