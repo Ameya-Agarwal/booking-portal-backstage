@@ -17,7 +17,7 @@ var S = {
   resources:DEFAULTS.slice(), fests:[], bookings:[],
   ev:{club:"", title:"", date:"", start:"18:00", end:"21:00", items:{}},
   pr:{festId:"", club:"", title:"", date:"", hours:[], slots:[], items:{}},
-  fs:{name:"", start:"", end:""},
+  fs:{name:"", start:"", end:"", ps:"", pe:""}, pp:{},
   sched:{date:""}, flash:null, confirm:null, busy:false, showStaff:false, pw:""
 };
 var session=null, staffToken=null, lastSig="", app=document.getElementById("app");
@@ -128,10 +128,11 @@ function allSlots(f){
   if(f.hours.length&&f.date) out.push({date:f.date,startMin:f.hours[0]*60,endMin:(f.hours[f.hours.length-1]+1)*60});
   return out;
 }
-function upcomingFests(){return S.fests.filter(function(f){return f.start>today();}).sort(function(a,b){return a.start<b.start?-1:1;});}
+function upcomingFests(){return S.fests.filter(function(f){return f.start>today()||!prWindow(f).closed;}).sort(function(a,b){return a.start<b.start?-1:1;});}
 function prWindow(f){
   if(!f) return null;
-  var lo=addDays(today(),CONFIG.practiceLeadDays), hi=addDays(f.start,-CONFIG.practiceCloseDays);
+  var tomorrow=addDays(today(),CONFIG.practiceLeadDays);
+  var lo=(f.practiceStart&&f.practiceStart>tomorrow)?f.practiceStart:tomorrow, hi=f.practiceEnd||addDays(f.start,-CONFIG.practiceCloseDays);
   return {lo:lo, hi:hi, closed:hi<lo};
 }
 function hourCount(date,h){
@@ -140,13 +141,13 @@ function hourCount(date,h){
 function practiceView(){
   var fests=upcomingFests();
   if(!fests.length){
-    return '<div class="empty"><b>No fests announced</b>Practice slots open once the stage controls departments add a fest. You can book from tomorrow until '+CONFIG.practiceCloseDays+' days before it starts.</div>';
+    return '<div class="empty"><b>No fests announced</b>Practice slots open once the stage controls departments add a fest.</div>';
   }
   var f=S.pr;
   if(!fests.some(function(x){return x.id===f.festId;})) f.festId=fests[0].id;
   var fest=fests.filter(function(x){return x.id===f.festId;})[0], w=prWindow(fest);
   var opts=fests.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===f.festId?" selected":"")+'>'+esc(x.name)+' · starts '+fmtD(x.start)+'</option>';}).join("");
-  var left='<section class="panel"><header><h2>Book a practice slot</h2><p class="hint">Rehearse on stage with real lights and sound Book from tomorrow until '+CONFIG.practiceCloseDays+' days before the fest starts. Slots are 2 hours by default.</p></header>'
+  var left='<section class="panel"><header><h2>Book a practice slot</h2><p class="hint">Rehearse on stage with real lights and sound Each fest has its own booking period, shown under the date. Slots are 2 hours by default.</p></header>'
     +'<div class="field"><label for="pr-fest">Fest</label><select id="pr-fest" data-bind="pr.festId" data-rr="1">'+opts+'</select></div>';
   var win=null;
   if(w.closed){
@@ -252,6 +253,13 @@ function mineView(){
   return h;
 }
 
+function periodCell(f){
+  var cur=S.pp[f.id]||{}, ps=cur.s!==undefined?cur.s:(f.practiceStart||""), pe=cur.e!==undefined?cur.e:(f.practiceEnd||""), w=prWindow(f);
+  return '<div class="pp"><label>Opens<input type="date" id="pp-s-'+esc(f.id)+'" data-pp="s:'+esc(f.id)+'" value="'+esc(ps)+'" aria-label="Practice opens for '+esc(f.name)+'"></label>'
+    +'<label>Closes<input type="date" id="pp-e-'+esc(f.id)+'" data-pp="e:'+esc(f.id)+'" value="'+esc(pe)+'" aria-label="Practice closes for '+esc(f.name)+'"></label></div>'
+    +'<div class="hint">'+(w.closed?'Closed.':'Clubs can book '+esc(fmtD(w.lo))+' to '+esc(fmtD(w.hi))+'.')+'</div>'
+    +'<button class="btn ghost sm" data-act="save-period" data-id="'+esc(f.id)+'"'+(S.busy?" disabled":"")+'>Save period</button>';
+}
 function deskView(){
   var subs=[["queue","Approvals"],["fests","Fests"]];
   var h='<div class="sub" role="tablist">'+subs.map(function(s){return '<button role="tab" data-act="sub" data-v="'+s[0]+'" aria-selected="'+(S.sub===s[0])+'">'+s[1]+'</button>';}).join("")+'</div>';
@@ -262,15 +270,18 @@ function deskView(){
   }
   if(S.sub==="fests"){
     var fl=S.fests.slice().sort(function(a,b){return a.start<b.start?-1:1;}).map(function(f){
-      return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.start)+' → '+esc(f.end)+'</td><td class="small">'+esc(fmtD(addDays(f.start,-CONFIG.practiceCloseDays)))+'</td>'
+      return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.start)+' → '+esc(f.end)+'</td><td>'+periodCell(f)+'</td>'
         +'<td>'+(S.confirm==="fest:"+f.id?'<button class="btn danger sm" data-act="del-fest" data-id="'+esc(f.id)+'">Remove</button> <button class="btn ghost sm" data-act="noconfirm">Keep</button>':'<button class="btn ghost sm" data-act="del-fest" data-id="'+esc(f.id)+'">Remove</button>')+'</td></tr>';
     }).join("");
-    h+='<div class="cols"><section class="panel"><header><h2>Fests</h2><p class="hint">Clubs can book practice from the day after they ask until '+CONFIG.practiceCloseDays+' days before a fest starts.</p></header>'
-      +(fl?'<div class="tblwrap"><table class="tbl"><thead><tr><th>Fest</th><th>Dates</th><th>Last practice day</th><th></th></tr></thead><tbody>'+fl+'</tbody></table></div>':'<div class="empty"><b>No fests yet</b>Add the first one to open practice booking.</div>')+'</section>'
+    h+='<div class="cols"><section class="panel"><header><h2>Fests</h2><p class="hint">Set a custom booking period for each fest. If you leave it blank, clubs can book from the day after they ask until '+CONFIG.practiceCloseDays+' days before the fest starts.</p></header>'
+      +(fl?'<div class="tblwrap"><table class="tbl"><thead><tr><th>Fest</th><th>Dates</th><th>Practice booking period</th><th></th></tr></thead><tbody>'+fl+'</tbody></table></div>':'<div class="empty"><b>No fests yet</b>Add the first one to open practice booking.</div>')+'</section>'
       +'<section class="panel"><header><h3>Add a fest</h3></header>'
       +'<div class="field"><label for="fs-name">Fest name</label><input type="text" id="fs-name" data-bind="fs.name" value="'+esc(S.fs.name)+'"></div>'
       +'<div class="row2"><div class="field"><label for="fs-start">First day</label><input type="date" id="fs-start" data-bind="fs.start" value="'+esc(S.fs.start)+'"></div>'
       +'<div class="field"><label for="fs-end">Last day</label><input type="date" id="fs-end" data-bind="fs.end" value="'+esc(S.fs.end)+'"></div></div>'
+      +'<div class="row2"><div class="field"><label for="fs-ps">Practice opens (optional)</label><input type="date" id="fs-ps" data-bind="fs.ps" value="'+esc(S.fs.ps)+'"></div>'
+      +'<div class="field"><label for="fs-pe">Practice closes (optional)</label><input type="date" id="fs-pe" data-bind="fs.pe" value="'+esc(S.fs.pe)+'"></div></div>'
+      +'<p class="hint">Leave both blank to use the default: tomorrow until '+CONFIG.practiceCloseDays+' days before the fest.</p>'
       +'<div class="actions"><button class="btn" data-act="add-fest">Add fest</button></div></section></div>';
   }
   return h;
@@ -437,7 +448,14 @@ document.addEventListener("click",function(ev){
   if(act==="add-fest"){
     var f=S.fs; if(!f.name.trim()||!f.start||!f.end){say("err","Enter the fest name and both dates.");return;}
     if(f.end<f.start){say("err","The last day cannot be before the first day.");return;}
-    run(async function(){await api("fests",{method:"POST",body:{name:f.name.trim(),start:f.start,end:f.end}});S.fs={name:"",start:"",end:""};},"Fest added. Practice booking is open for it."); return;
+    if(f.ps&&f.pe&&f.pe<f.ps){say("err","Practice cannot close before it opens.");return;}
+    run(async function(){await api("fests",{method:"POST",body:{name:f.name.trim(),start:f.start,end:f.end,practiceStart:f.ps||null,practiceEnd:f.pe||null}});S.fs={name:"",start:"",end:"",ps:"",pe:""};},"Fest added. Practice booking is open for it."); return;
+  }
+  if(act==="save-period"){
+    var cur=S.pp[id]||{}, fe=S.fests.filter(function(x){return x.id===id;})[0]||{};
+    var ps=cur.s!==undefined?cur.s:(fe.practiceStart||""), pe=cur.e!==undefined?cur.e:(fe.practiceEnd||"");
+    if(ps&&pe&&pe<ps){say("err","Practice cannot close before it opens.");return;}
+    run(async function(){await api("fests/"+id+"/period",{method:"POST",body:{start:ps||null,end:pe||null}});delete S.pp[id];},ps||pe?"Booking period saved.":"Booking period cleared. The default applies."); return;
   }
   if(act==="del-fest"){
     if(S.confirm!=="fest:"+id){S.confirm="fest:"+id;render();return;}
@@ -457,6 +475,7 @@ document.addEventListener("keydown",function(ev){ if(ev.key==="Enter"&&ev.target
 function onField(ev,committed){
   var t=ev.target;
   if(t.id==="st-pw"){S.pw=t.value;return;}
+  if(t.dataset.pp){var q=t.dataset.pp.split(":"); S.pp[q[1]]=S.pp[q[1]]||{}; S.pp[q[1]][q[0]]=t.value; return;}
   if(t.dataset.bind){
     setPath(t.dataset.bind,t.value);
     if(t.dataset.bind==="pr.festId"){S.pr.hours=[];S.pr.slots=[];}
