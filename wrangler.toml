@@ -14,3 +14,5 @@ ALLOWED_EMAIL_DOMAIN = "bits-pilani.ac.in"   # matches @bits-pilani.ac.in and @p
 # Secrets are NOT stored here. Set them with:
 #   npx wrangler pages secret put SESSION_SECRET
 #   npx wrangler pages secret put STAFF_PASSWORD
+#   npx wrangler pages secret put RESEND_API_KEY --project-name main-audi-bookings
+#   npx wrangler pages secret put BOOKING_EMAIL_FROM --project-name main-audi-bookings

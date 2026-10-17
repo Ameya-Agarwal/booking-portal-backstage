@@ -419,16 +419,16 @@ async function submit(kind){
   var v=validate(kind); if(typeof v==="string"){say("err",v);return;}
   S.busy=true; render();
   try{
-    await api("bookings",{method:"POST",body:v});
+    var result=await api("bookings",{method:"POST",body:v});
     store("atd.club",v.club);
     var f=kind==="ev"?S.ev:S.pr; f.items={}; f.title=""; if(kind==="pr"){f.hours=[];f.slots=[];}
     lastSig=""; await load(true); S.busy=false; S.tab="mine";
-    say("ok","Request sent. It holds the slot while the stage controls departments review it. Check the status here.");
+    say(result.warning?"err":"ok",result.warning||"Request sent. It holds the slot while the stage controls departments review it. Check the status here.");
   }catch(err){ S.busy=false; await load(true); say("err",err.message); }
 }
 async function run(fn,okText){
   S.busy=true; render();
-  try{ await fn(); lastSig=""; await load(true); S.busy=false; say("ok",okText); }
+  try{ var result=await fn(); lastSig=""; await load(true); S.busy=false; say(result&&result.warning?"err":"ok",result&&result.warning?okText+" "+result.warning:okText); }
   catch(err){ S.busy=false; say("err",err.message); }
 }
 
